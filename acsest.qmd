@@ -1,0 +1,39 @@
+---
+title: "ACS Derived Estimates"
+format:
+  html:
+    date: today
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+    code-fold: true
+    code-overflow: wrap
+---
+
+
+# Module structure and logic
+
+Brief description of steps, functions, inputs and outputs of `acsest.R`.
+
+
+
+# Example usage
+
+Census API key needs to be stored in environmental variable `CENSUS_API_KEY`.
+
+```{r}
+
+source("acsest.R", local = (acsest <- new.env()))
+
+# read in a set of estimate formulas
+sheet <- acsest$fread("path/to/estimate_specs.csv")
+
+# retrieve and save raw ACS data
+wi_acs <- acsest$acsdata(sheet[, formula], level = levels, endyear = 2022) 
+levels <- c("state", "county")
+saveRDS(wi_acs, file = "wi_acs.rds")
+
+# calculate estimates from data and formula specs
+out <- acsest$sumacs(formula = sheet[, formula], varname= sheet[, myfield], method = sheet[, type], level = levels, one.zero = TRUE, data = wi_acs, file = "output.csv")
+
+```
