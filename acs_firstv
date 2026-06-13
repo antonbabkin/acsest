@@ -10,12 +10,30 @@ format:
     code-overflow: wrap
 ---
 
+# Overview
 
-# Module structure and logic
-# Overview: 
-Acsest is an R script that reads a csv file of ACS variables and returns a table of derived estimates and their margins of error for one or more geographic levels. It was created to replace the ACSR package which had dependencies such as the archived R package since that package is no longer matained. The replacement dependcy is right now looking like tidycensus which is actively maintained. Census API key is also a good alternative.
+`acsest.R` is a standalone R script that reads a CSV file of formula
+specifications and returns a table of derived ACS estimates and margins
+of error (MOEs) for one or more geography levels. It was built to
+replace the `acsr` R package, which depended on the archived `acs`
+package (unmaintained, incompatible with the tidyverse). The
+replacement dependency is `tidycensus`, which is actively maintained
+and returns standard tibbles. The script is used by APL projects
+including the Food Security mapping tool and Risk & Reach.
 
-# Margins of Error (MOE) calculations
+# Background
+
+## Why replace ACSR?
+
+ACSR depended on the `acs` R package, which used an S4 class system to
+wrap the Census API. That package is no longer actively maintained. Its
+API key mechanism (`api.key.install()`) is fragile, and the S4 `acs`
+objects it returned are not compatible with the tidyverse. `tidycensus`
+is the modern replacement: actively maintained, returns plain tibbles,
+and has built-in MOE helper functions.
+
+## ACS margins of error
+
 The ACS is a sample survey, not a complete count, so every number it
 reports is an *estimate* with uncertainty. That uncertainty is reported
 as a **margin of error (MOE)** at 90% confidence by default — meaning
@@ -30,10 +48,7 @@ $$SE = MOE / 1.645$$
 propagation math, convert to SE first, do the calculation, then convert
 back to MOE for output.
 
-`censusapi` - 
-
 Reference: ACS User Guide, Chapter 8.
-
 
 ## Derived estimate methods
 
@@ -44,7 +59,7 @@ comes straight from the API.
 
 **`aggregation`** — sum several variables together (e.g. total people
 across age groups). MOE is computed by summing the squared SEs and
-taking the square root (quadrature): - sebastians code. 
+taking the square root (quadrature):
 
 $$MOE = 1.645 \times \sqrt{\sum SE_i^2}$$
 
@@ -75,7 +90,11 @@ $$SE^2_{combined} = \max(SE_i^2 \mid \hat{x}_i = 0) + \sum(SE_j^2 \mid \hat{x}_j
 This is the `one.zero = TRUE` behavior and is the default. It is
 implemented using a 0/1 mask multiplied against the squared SE matrix,
 with `apply(..., 1, max)` for the zero terms and `apply(..., 1, sum)`
-for the nonzero terms.-- sebastians code+
+for the nonzero terms.
+
+Reference: CB MOE Webinar Transcript, Slide 52.
+
+# Module structure and logic
 
 ## Inputs
 
@@ -90,6 +109,9 @@ Required columns:
 | `varname` | Output column name for this derived variable. | `poverty_rate` |
 | `method` | One of `variable`, `aggregation`, `proportion`, `ratio`. | `proportion` |
 
+Variable codes are case-insensitive. Parentheses are allowed. The `/`
+operator separates numerator from denominator in proportion/ratio
+formulas.
 
 ### Function arguments
 
@@ -136,7 +158,6 @@ Required columns:
   to the appropriate MOE calculation per method, and merges all results
   by GEOID. Optionally writes to CSV.
 
-
 ## Internal helpers
 
 ### `getvars(formula)`
@@ -149,17 +170,6 @@ Required columns:
   `+`, `-`, `/`, `*`. Normalizes to uppercase, deduplicates. Salvaged
   directly from ACSR — no changes needed.
 
-  calc_acs_ratio <- function(data, num_expr, den_expr, zero_max = TRUE) {
-  # Capture the expressions as quosures
-  num_enq <- enquo(num_expr)
-  den_enq <- enquo(den_expr)
-  
-  # Extract variable names
-  num_vars <- all.vars(num_enq)
-  den_vars <- all.vars(den_enq)
-
-
-## Example
 ```r
 getvars <- function(formula) {
   constr <- gsub("\\(|\\)", "", formula)
@@ -227,21 +237,28 @@ If `file` is provided, the result is also written to a CSV at that path.
 
 # Example usage
 
-Census API key needs to be stored in environmental variable `CENSUS_API_KEY`.
+Census API key needs to be stored in environmental variable
+`CENSUS_API_KEY`.
 
 ```{r}
-
 source("acsest.R", local = (acsest <- new.env()))
 
 # read in a set of estimate formulas
 sheet <- acsest$fread("path/to/estimate_specs.csv")
 
 # retrieve and save raw ACS data
-wi_acs <- acsest$acsdata(sheet[, formula], level = levels, endyear = 2022) 
 levels <- c("state", "county")
+wi_acs <- acsest$acsdata(sheet[, formula], level = levels, endyear = 2022)
 saveRDS(wi_acs, file = "wi_acs.rds")
 
 # calculate estimates from data and formula specs
-out <- acsest$sumacs(formula = sheet[, formula], varname= sheet[, myfield], method = sheet[, type], level = levels, one.zero = TRUE, data = wi_acs, file = "output.csv")
-
+out <- acsest$sumacs(
+  formula  = sheet[, formula],
+  varname  = sheet[, myfield],
+  method   = sheet[, type],
+  level    = levels,
+  one.zero = TRUE,
+  data     = wi_acs,
+  file     = "output.csv"
+)
 ```
