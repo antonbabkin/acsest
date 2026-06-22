@@ -1,4 +1,4 @@
-#import pacakges
+#import packages
 library(data.table)
 library(stringr)
 library(rlang)
@@ -23,8 +23,8 @@ if (Sys.getenv("CENSUS_API_KEY") == "") {
   stop("CENSUS_API_KEY is not set — add it to .env or set it in your environment")
 }
 
-# functions
-#get_vars function
+# ── getvars ───────────────────────────────────────────────────────────────────
+# Extracts all ACS variable names from a formula string.
 getvars <- function(formula) {
   constr <- gsub("\\(|\\)", "", formula)
   constr <- gsub("\\* 100", "", constr)
@@ -34,7 +34,9 @@ getvars <- function(formula) {
   vars   <- vars[!duplicated(vars)]
   return(vars)
 }
-#Parse funciton 
+
+# ── parse_formula ─────────────────────────────────────────────────────────────
+# Breaks a formula string into numerator/denominator variable lists and flags * 100.
 parse_formula <- function(formula_str) {
   # 1. detect and strip "* 100"
   multiply_100 <- grepl("\\* 100", formula_str)
@@ -60,14 +62,12 @@ parse_formula <- function(formula_str) {
 
   # 4. helper: split one side into variables + operators
   parse_side <- function(s) {
-    # capture the + and - operators in order
     op_matches <- gregexpr("[+\\-]", s)[[1]]
     if (op_matches[1] == -1) {
       operators <- character(0)
     } else {
       operators <- substring(s, op_matches, op_matches)
     }
-    # split into variable names
     vars <- strsplit(s, "[+\\-]")[[1]]
     vars <- trimws(vars)
     vars <- toupper(vars)
@@ -89,7 +89,9 @@ parse_formula <- function(formula_str) {
     has_division = has_division
   )
 }
-#Computing MOE engine. 
+
+# ── compute_var_vector ────────────────────────────────────────────────────────
+# Combines a set of MOEs into one variance number, with the one-zero rule.
 compute_var_vector <- function(df, est_cols, one_zero = TRUE, z = 1.645) {
   if (length(est_cols) == 0) return(rep(0, nrow(df)))
 
@@ -100,7 +102,7 @@ compute_var_vector <- function(df, est_cols, one_zero = TRUE, z = 1.645) {
   E_mat <- as.matrix(df[, ..est_cols])
   V_mat <- as.matrix(df[, ..moe_cols])
 
-  # replace Census "not available" special value with NA
+  # replace Census sentinel values with NA
   V_mat[V_mat %in% c(-555555555)] <- NA
   E_mat[E_mat %in% c(-555555555)] <- NA
 
@@ -123,28 +125,33 @@ compute_var_vector <- function(df, est_cols, one_zero = TRUE, z = 1.645) {
   nonzero_sum + zero_max
 }
 
+# ── moe_agg ───────────────────────────────────────────────────────────────────
+# Aggregation: sum estimates, combine MOEs via sum of variances.
+moe_agg <- function(df, parsed, one_zero = TRUE, z = 1.645) {
+  est_cols <- paste0(parsed$num_vars, "E")
+  est      <- rowSums(as.matrix(df[, ..est_cols]), na.rm = TRUE)
+  variance <- compute_var_vector(df, est_cols, one_zero, z)
+  moe      <- sqrt(variance) * z
+  data.table(est = est, moe = moe)
+}
+
+# ── moe_proprat ───────────────────────────────────────────────────────────────
+# Proportion or ratio: divide numerator by denominator, combine MOEs correctly.
 moe_proprat <- function(df, parsed, method, one_zero = TRUE, z = 1.645) {
-  # column names: add E to each variable to get the estimate columns
   num_cols <- paste0(parsed$num_vars, "E")
   den_cols <- paste0(parsed$den_vars, "E")
 
-  # numerator estimate = sum of the numerator columns
   numerator   <- rowSums(as.matrix(df[, ..num_cols]), na.rm = TRUE)
-  # denominator estimate = sum of the denominator columns
   denominator <- rowSums(as.matrix(df[, ..den_cols]), na.rm = TRUE)
 
-  # the derived value
   p <- numerator / denominator
 
-  # variances of numerator and denominator (one-zero aware)
   var_num <- compute_var_vector(df, num_cols, one_zero, z)
   var_den <- compute_var_vector(df, den_cols, one_zero, z)
 
-  # proportion vs ratio: only the sign under the root differs
   if (method %in% c("proportion", "prop")) {
     var_prop  <- (var_num - p^2 * var_den) / (denominator^2)
     var_ratio <- (var_num + p^2 * var_den) / (denominator^2)
-    # use proportion formula, fall back to ratio if it goes negative
     var_final <- ifelse(!is.na(var_prop) & var_prop >= 0, var_prop, var_ratio)
   } else {
     var_final <- (var_num + p^2 * var_den) / (denominator^2)
@@ -153,39 +160,23 @@ moe_proprat <- function(df, parsed, method, one_zero = TRUE, z = 1.645) {
   est <- p
   moe <- sqrt(pmax(var_final, 0)) * z
 
-  # scale to percent if the formula had "* 100"
   if (parsed$multiply_100) {
     est <- est * 100
     moe <- moe * 100
   }
 
-  # zero denominator -> undefined
   est <- ifelse(denominator == 0, NA_real_, est)
   moe <- ifelse(denominator == 0, NA_real_, moe)
 
   data.table(est = est, moe = moe)
 }
-moe_agg <- function(df, parsed, one_zero = TRUE, z = 1.645) {
-  # estimate columns
-  est_cols <- paste0(parsed$num_vars, "E")
 
-  # estimate = sum of the columns
-  est <- rowSums(as.matrix(df[, ..est_cols]), na.rm = TRUE)
-
-  # variance from the engine, then convert to MOE
-  variance <- compute_var_vector(df, est_cols, one_zero, z)
-  moe <- sqrt(variance) * z
-
-  data.table(est = est, moe = moe)
-}
-
-##Traffic cop fucntion, main loop reads it row by row and would need a whole lot of branching logic, so this compute_one_variable function decides which method to compute instead of all of this branching logic being in the main loop. 
-#main loop only has a simple for(eachrow){compute_one_variable(df, parsed, method)}
+# ── compute_one_variable ──────────────────────────────────────────────────────
+# Traffic cop: routes each formula to the right MOE function.
 compute_one_variable <- function(df, parsed, method, one_zero = TRUE, z = 1.645) {
   method <- tolower(method)
 
   if (method == "variable") {
-    # just grab the one column's estimate and MOE directly
     est_col <- paste0(parsed$num_vars[1], "E")
     moe_col <- paste0(parsed$num_vars[1], "M")
     return(data.table(est = df[[est_col]], moe = df[[moe_col]]))
@@ -204,7 +195,6 @@ compute_one_variable <- function(df, parsed, method, one_zero = TRUE, z = 1.645)
 
 # ── geo_lookup ────────────────────────────────────────────────────────────────
 # Maps level names to Census API geography parameters and GEO_ID prefix.
-# needs_county: TRUE means the "in" clause must be "state:XX+county:*"
 geo_lookup <- data.table(
   level = c(
     "county", "county.subdivision", "tract", "block.group",
@@ -225,14 +215,9 @@ geo_lookup <- data.table(
 
 # ── fetch_acs ─────────────────────────────────────────────────────────────────
 # Fetches ACS 5-year estimates from the Census API.
-# variables: bare variable names without E/M suffix (e.g. "B17001_001")
-# year:      ACS release year (e.g. 2021)
-# for_param: Census "for" clause  (e.g. "county:*")
-# in_param:  Census "in"  clause  (e.g. "state:55" or "state:55+county:*")
-# Returns a data.table with GEO_ID, NAME, and {var}E / {var}M columns.
 fetch_acs <- function(variables, year, for_param, in_param,
                       api_key = Sys.getenv("CENSUS_API_KEY")) {
-  base_url <- sprintf("https://api.census.gov/data/%d/acs/acs5", year)
+  base_url  <- sprintf("https://api.census.gov/data/%d/acs/acs5", year)
   sentinels <- c(-555555555, -666666666, -999999999, -888888888)
 
   # split into chunks of 24 vars (= 48 data cols) to stay under the 50-col limit
@@ -254,8 +239,7 @@ fetch_acs <- function(variables, year, for_param, in_param,
     ct <- resp_content_type(resp)
     if (!grepl("json", ct)) {
       body <- resp_body_string(resp)
-      # extract text from HTML error page if present
-      msg <- regmatches(body, regexpr("(?<=<p>)[^<]+", body, perl = TRUE))
+      msg  <- regmatches(body, regexpr("(?<=<p>)[^<]+", body, perl = TRUE))
       stop("Census API error: ", if (length(msg)) trimws(msg) else body)
     }
 
@@ -264,7 +248,11 @@ fetch_acs <- function(variables, year, for_param, in_param,
     mat     <- do.call(rbind, lapply(json[-1], unlist))
     dt      <- as.data.table(mat)
     setnames(dt, headers)
-    dt
+
+    # drop extra geography columns the API adds (state, county, tract, etc.)
+    # keep only GEO_ID, NAME, and the data columns we asked for
+    keep <- intersect(names(dt), c("GEO_ID", "NAME", cols))
+    dt[, ..keep]
   }
 
   batches <- lapply(chunks, fetch_chunk)
@@ -287,8 +275,6 @@ fetch_acs <- function(variables, year, for_param, in_param,
 
 # ── extract_fips ──────────────────────────────────────────────────────────────
 # Parses the Census GEO_ID column into FIPS component columns.
-# GEO_ID format: "{prefix}US{digits}" e.g. "0500000US55025"
-# Adds st, and level-specific columns (cnty, tract, bg, cousub, place, sdid).
 extract_fips <- function(df) {
   dt <- as.data.table(df)
 
@@ -328,20 +314,13 @@ extract_fips <- function(df) {
 }
 
 # ── acsdata ───────────────────────────────────────────────────────────────────
-# Fetches all ACS variables needed by a set of formula specs for one geography
-# level, with saveRDS caching keyed on (level, year, state).
-# formulas:  character vector of formula strings
-# level:     one of geo_lookup$level
-# year:      ACS release year
-# state:     2-digit state FIPS as character (e.g. "55")
-# cache_dir: directory for .rds cache files (default: tempdir())
+# Fetches all ACS variables for one or more geography levels, with RDS caching.
 acsdata <- function(formulas, level, year, state,
                     api_key   = Sys.getenv("CENSUS_API_KEY"),
                     cache_dir = tempdir()) {
 
   all_vars <- unique(unlist(lapply(formulas, getvars)))
 
-  # fetch one level (the original single-level logic, pulled into a helper)
   fetch_one_level <- function(lvl) {
     cache_file <- file.path(
       cache_dir,
@@ -370,20 +349,13 @@ acsdata <- function(formulas, level, year, state,
     dt
   }
 
-  # loop over every requested level, return a named list
-  result <- setNames(lapply(level, fetch_one_level), level)
-  result
+  setNames(lapply(level, fetch_one_level), level)
 }
-# ── sumacs ────────────────────────────────────────────────────────────────────
-# Main computation loop. For each row in spec, parses the formula and calls
-# compute_one_variable, then assembles results into a wide data.table.
-# spec:     data.table with columns: varname, formula, method
-# data:     data.table from acsdata()
-# one_zero: apply Census one-zero MOE rule (default TRUE)
-# z:        z-score for MOE (1.645 = 90%, 1.96 = 95%)
-sumacs <- function(spec, data, one_zero = TRUE, z = 1.645) {
 
-  # compute all derived variables for a single level's table
+# ── sumacs ────────────────────────────────────────────────────────────────────
+# Main loop: computes derived estimates and MOEs for all spec rows and levels.
+sumacs <- function(spec, data, one_zero = TRUE, z = 1.645, file = NULL) {
+
   compute_level <- function(level_data) {
     geo_cols <- intersect(
       c("GEO_ID", "NAME", "st", "cnty", "cousub", "tract", "bg", "place", "sdid"),
@@ -403,13 +375,44 @@ sumacs <- function(spec, data, one_zero = TRUE, z = 1.645) {
     cbind(level_data[, ..geo_cols], do.call(cbind, results))
   }
 
-  # if data is a single data.table, wrap it so the loop works uniformly
   if (is.data.table(data)) {
     data <- list(data)
   }
 
-  # compute each level, then stack them with fill=TRUE
-  # (fill handles levels having different FIPS columns, e.g. tract has 'tract', county doesn't)
   per_level <- lapply(data, compute_level)
-  rbindlist(per_level, fill = TRUE, idcol = "level")
+  result    <- rbindlist(per_level, fill = TRUE, idcol = "level")
+
+  if (!is.null(file)) fwrite(result, file)
+  result
+}
+
+# ── read_spec ─────────────────────────────────────────────────────────────────
+# Reads and validates the variable spec CSV file.
+read_spec <- function(path) {
+  sheet <- fread(file = path)
+
+  # check required columns
+  required <- c("formula", "myfield", "type")
+  missing  <- setdiff(required, names(sheet))
+  if (length(missing) > 0)
+    stop("Spec CSV missing required columns: ", paste(missing, collapse = ", "))
+
+  # normalize method names (handles Prop, Agg, PROPORTION etc.)
+  sheet[, type := fcase(
+    tolower(type) %in% c("proportion", "prop"),  "prop",
+    tolower(type) %in% c("ratio"),               "ratio",
+    tolower(type) %in% c("aggregation", "agg"),  "agg",
+    tolower(type) %in% c("variable", "var"),     "variable",
+    default = NA_character_
+  )]
+
+  # warn on unrecognized methods
+  bad <- sheet[is.na(type), myfield]
+  if (length(bad) > 0)
+    warning("Unrecognized method for variable(s): ", paste(bad, collapse = ", "))
+
+  # rename to match sumacs() expected column names
+  setnames(sheet, c("myfield", "type"), c("varname", "method"))
+
+  sheet
 }
