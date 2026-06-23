@@ -1,247 +1,443 @@
 ---
-title: "ACS Derived Estimates"
+title: "ACSEST: ACS Derived Estimates"
+author: "Diveesha Vanchireddy"
 format:
   html:
     date: today
     toc: true
-    toc-depth: 2
+    toc-depth: 3
     embed-resources: true
     code-fold: true
     code-overflow: wrap
 ---
 
+# Overview
 
-# Module structure and logic
-# Overview: 
-Acsest is an R script that reads a csv file of ACS variables and returns a table of derived estimates and their margins of error for one or more geographic levels. It was created to replace the ACSR package which had dependencies such as the archived R package since that package is no longer matained. The replacement dependcy is right now looking like tidycensus which is actively maintained. Census API key is also a good alternative.
+`acsest.R` is a self-contained R script that reads a CSV file of ACS variable
+formulas and returns a table of derived estimates and their margins of error
+(MOEs) for one or more geographic levels.
 
-# Margins of Error (MOE) calculations
-The ACS is a sample survey, not a complete count, so every number it
-reports is an *estimate* with uncertainty. That uncertainty is reported
-as a **margin of error (MOE)** at 90% confidence by default — meaning
-the true value falls within ± MOE of the estimate 90% of the time.
+It was created to replace the
+[`acsr`](https://github.com/sdaza/acsr) package, which depended on the
+archived `acs` R package that is no longer maintained. The new script talks
+directly to the Census Bureau REST API using `httr2`, which is actively
+maintained.
 
-The MOE is related to the standard error (SE) by:
+**Primary dependencies:**
 
-$$MOE = SE \times 1.645$$
-$$SE = MOE / 1.645$$
+| Package | Role |
+|---------|------|
+| `data.table` | Fast CSV I/O and data manipulation |
+| `httr2` | Census API HTTP requests |
+| `stringr` | String operations (MOE column name replacement) |
+| `rlang` | `exec(pmax, ...)` for the one-zero max operation |
 
-`tidycensus` always returns the `moe` column directly. To do the MOE
-propagation math, convert to SE first, do the calculation, then convert
-back to MOE for output.
+---
 
-`censusapi` - 
+# Setup
+
+## Census API Key
+
+A Census API key is required. Request one at
+<https://api.census.gov/data/key_signup.html>.
+
+Set it before sourcing the script:
+
+```r
+Sys.setenv(CENSUS_API_KEY = "your_key_here")
+source("acsest.R")
+```
+
+Or store it in a `.env` file in the same directory as `acsest.R`:
+
+```
+CENSUS_API_KEY=your_key_here
+```
+
+The script will load it automatically on startup.
+
+---
+
+# Margins of Error
+
+The ACS is a sample survey, not a complete count. Every estimate comes
+with uncertainty reported as a **margin of error (MOE)** at the 90%
+confidence level — meaning the true value falls within ± MOE of the
+estimate 90% of the time.
+
+MOE and standard error (SE) are related by:
+
+$$MOE = SE \times 1.645 \qquad SE = MOE / 1.645$$
+
+The Census API returns MOEs directly. All internal math is done in SE units
+(divide by 1.645 on input, multiply by 1.645 on output).
 
 Reference: ACS User Guide, Chapter 8.
 
+---
 
-## Derived estimate methods
+# Derived Estimate Methods
 
 There are four methods the script handles:
 
-**`variable`** — pull the raw ACS value directly. No math. The MOE
-comes straight from the API.
+## Variable
 
-**`aggregation`** — sum several variables together (e.g. total people
-across age groups). MOE is computed by summing the squared SEs and
-taking the square root (quadrature): - sebastians code. 
+Pull the raw ACS value directly. No computation. The estimate and MOE come
+straight from the API.
 
-$$MOE = 1.645 \times \sqrt{\sum SE_i^2}$$
+## Aggregation
 
-**`proportion`** — numerator is a *subset* of the denominator (e.g.
-people in poverty / total people). Result is between 0 and 1. MOE
-uses the Census Bureau proportion formula:
+Sum several variables together (e.g. total people across age groups). MOE
+is computed by summing the squared SEs and taking the square root (quadrature):
 
-$$MOE = \frac{1.645}{Y} \sqrt{SE_X^2 - \hat{p}^2 \cdot SE_Y^2}$$
+$$MOE_{agg} = 1.645 \times \sqrt{\sum_i SE_i^2}$$
 
-If the expression under the square root is negative, fall back to the
-ratio formula.
+## Proportion
 
-**`ratio`** — numerator is *not* a subset of the denominator (e.g.
-males / females). Uses a `+` instead of `-`:
+Numerator is a *subset* of the denominator (e.g. people in poverty / total
+people). Result is a value between 0 and 1 (or 0–100 if `* 100` is appended
+to the formula). Uses the Census Bureau proportion formula:
 
-$$MOE = \frac{1.645}{Y} \sqrt{SE_X^2 + \hat{p}^2 \cdot SE_Y^2}$$
+$$MOE_{prop} = \frac{1.645}{Y} \sqrt{SE_X^2 - \hat{p}^2 \cdot SE_Y^2}$$
 
-## The one-zero rule
+If the expression under the square root is negative, the script automatically
+falls back to the ratio formula.
 
-When computing an aggregation or proportion MOE, if some component
-variables have an estimate of zero, the standard formula overcounts
-their uncertainty. The Census Bureau recommends: among all zero-estimate
-components, only keep the **largest** squared SE — not all of them. All
-nonzero components are kept as normal.
+## Ratio
 
-$$SE^2_{combined} = \max(SE_i^2 \mid \hat{x}_i = 0) + \sum(SE_j^2 \mid \hat{x}_j \neq 0)$$
+Numerator is *not* a subset of the denominator (e.g. males / females). Uses
+`+` instead of `−`:
 
-This is the `one.zero = TRUE` behavior and is the default. It is
-implemented using a 0/1 mask multiplied against the squared SE matrix,
-with `apply(..., 1, max)` for the zero terms and `apply(..., 1, sum)`
-for the nonzero terms.-- sebastians code+
+$$MOE_{ratio} = \frac{1.645}{Y} \sqrt{SE_X^2 + \hat{p}^2 \cdot SE_Y^2}$$
 
-## Inputs
+---
 
-### Spec CSV file
+# The One-Zero Rule
+
+When computing an aggregation or proportion MOE, if some component variables
+have an estimate of zero, the standard formula overcounts their uncertainty.
+The Census Bureau recommends: among all zero-estimate components, only keep
+the **largest** squared SE — not all of them. All nonzero components are kept
+as normal.
+
+$$SE^2_{combined} = \max\!\left(SE_i^2 \;\middle|\; \hat{x}_i = 0\right)
++ \sum\!\left(SE_j^2 \;\middle|\; \hat{x}_j \neq 0\right)$$
+
+This is the `one_zero = TRUE` behavior and is the default. Implementation
+uses a 0/1 matrix mask multiplied against the squared SE matrix:
+
+```r
+nonzero_sum   <- rowSums(V_mat * (E_mat != 0), na.rm = TRUE)
+zero_vars_mat <- V_mat * (E_mat == 0)
+zero_max      <- exec(pmax, !!!as.data.frame(zero_vars_mat))
+combined_var  <- nonzero_sum + zero_max
+```
+
+---
+
+# Inputs
+
+## Spec CSV File
 
 The user provides a CSV with one row per derived variable to compute.
 Required columns:
 
 | Column | Description | Example |
 |--------|-------------|---------|
-| `formula` | ACS variable codes with operators. Append `* 100` to scale to percentage. | `b17001_002 / b17001_001 * 100` |
-| `varname` | Output column name for this derived variable. | `poverty_rate` |
-| `method` | One of `variable`, `aggregation`, `proportion`, `ratio`. | `proportion` |
+| `formula` | ACS variable codes with arithmetic operators. Append `* 100` to scale to percentage. Parentheses are supported. | `(B17001_004 + B17001_018) / B17001_001 * 100` |
+| `myfield` | Output column name for this derived variable | `poverty_rate` |
+| `type` | One of `variable`, `aggregation`/`agg`, `proportion`/`prop`, `ratio` (case-insensitive) | `prop` |
 
+Example `RR_vars_22ACS.csv`:
 
-### Function arguments
+```
+myfield,type,formula
+u5_pv,Prop,(B17001_004 + B17001_018) / (B17001_004 + B17001_018 + B17001_033 + B17001_047)
+u5_pv_c,Agg,(B17001_004 + B17001_018)
+gini,Agg,(B19083_001)
+```
+
+## Runtime Arguments
 
 | Argument | What it controls | Default |
 |----------|-----------------|---------|
-| `level` | Geography string(s), e.g. `c("county", "tract")` | `"state"` |
-| `endyear` | ACS survey end year | `2022` |
-| `one.zero` | Apply the one-zero SE rule | `TRUE` |
-| `format.out` | `"wide"` or `"long"` output | `"wide"` |
+| `level` | Geography string(s) from `geo_lookup`, e.g. `c("county", "tract")` | required |
+| `year` | ACS 5-year survey end year | required |
+| `state` | 2-digit state FIPS code as character | required |
+| `one_zero` | Apply the one-zero SE rule | `TRUE` |
 | `file` | Path to write output CSV (optional) | `NULL` |
 
-## Functions
+---
 
-### `fread(path)`
+# Functions
+
+## User-Facing
+
+### `read_spec(path)`
+
+Reads and validates the spec CSV file.
 
 - **Input:** File path to the spec CSV.
-- **Output:** A data.table with columns `formula`, `varname`, `method`.
-- **Notes:** Validates that required columns are present and that
-  `method` values are from the allowed set. `fread` is `data.table`'s
-  fast CSV reader.
+- **Output:** A `data.table` with columns `formula`, `varname`, `method`.
+- **Notes:** Validates required columns are present. Normalizes `type`
+  values to lowercase standard names (`prop`, `agg`, `ratio`, `variable`)
+  regardless of capitalization in the CSV. Renames `myfield` → `varname`
+  and `type` → `method` to match `sumacs()` expected column names.
 
-### `acsdata(formula, level, endyear)`
+```r
+read_spec <- function(path)
+```
 
-- **Input:** Vector of formula strings, vector of geography level
-  strings, integer year.
+---
+
+### `acsdata(formulas, level, year, state, cache_dir)`
+
+Downloads raw ACS data for all variables needed by the spec, for one or
+more geographic levels.
+
+- **Input:** Vector of formula strings; vector of geography level strings;
+  integer year; 2-digit state FIPS string.
 - **Output:** A named list — one element per level — of wide-format
-  tibbles from `tidycensus::get_acs()`. Each tibble has one row per
-  geography and one `_E` / `_M` column pair per variable.
-- **Notes:** This is the slow step — it hits the Census API. That is
-  why the usage example saves the result with `saveRDS()`, so
-  `sumacs()` can be re-run with different specs without re-downloading.
-  Internally calls `getvars()` to extract variable names from formulas
-  before fetching.
+  `data.table`s. Each table has one row per geography, columns `GEO_ID`,
+  `NAME`, FIPS columns, and `{var}E` / `{var}M` column pairs for each
+  variable.
+- **Notes:** Calls `getvars()` internally to extract variable names from
+  formulas before fetching. Results are cached to `.rds` files keyed on
+  `(level, year, state)` so re-running `sumacs()` with a different spec
+  does not require re-downloading.
 
-### `sumacs(formula, varname, method, level, one.zero, data, file)`
+```r
+acsdata(formulas, level, year, state,
+        api_key   = Sys.getenv("CENSUS_API_KEY"),
+        cache_dir = tempdir())
+```
 
-- **Input:** Vectors of formula strings, varnames, and methods (one
-  element per derived variable); geography level(s); one.zero flag;
-  pre-downloaded data list from `acsdata()`; optional output file path.
-- **Output:** A data.table with `GEOID`, `NAME`, geography FIPS
+---
+
+### `sumacs(spec, data, one_zero, z, file)`
+
+Main computation loop. Computes all derived estimates and MOEs.
+
+- **Input:** `spec` data.table from `read_spec()`; `data` named list from
+  `acsdata()`; optional `file` path for CSV output.
+- **Output:** A wide `data.table` with `level`, `GEO_ID`, `NAME`, FIPS
   columns, and `{varname}_est` / `{varname}_moe` column pairs for each
-  derived variable.
-- **Notes:** Main computation function. Loops over spec rows, dispatches
-  to the appropriate MOE calculation per method, and merges all results
-  by GEOID. Optionally writes to CSV.
+  derived variable. All geography levels are row-bound together with a
+  `level` column.
+- **Notes:** Loops over spec rows, dispatches to the correct MOE function
+  via `compute_one_variable()`, and column-binds all results per geography.
 
+```r
+sumacs(spec, data, one_zero = TRUE, z = 1.645, file = NULL)
+```
 
-## Internal helpers
+---
+
+## Internal Helpers
 
 ### `getvars(formula)`
 
-- **Input:** A character string or vector of formula strings, e.g.
-  `"b17001_002 + b17001_001"`.
-- **Output:** A character vector of unique uppercase ACS variable names,
-  e.g. `c("B17001_002", "B17001_001")`.
-- **Notes:** Strips parentheses and `* 100` first, then splits on
-  `+`, `-`, `/`, `*`. Normalizes to uppercase, deduplicates. Salvaged
-  directly from ACSR — no changes needed.
+Extracts raw ACS variable codes from a formula string.
 
-  calc_acs_ratio <- function(data, num_expr, den_expr, zero_max = TRUE) {
-  # Capture the expressions as quosures
-  num_enq <- enquo(num_expr)
-  den_enq <- enquo(den_expr)
-  
-  # Extract variable names
-  num_vars <- all.vars(num_enq)
-  den_vars <- all.vars(den_enq)
+- **Input:** Character string, e.g. `"(B17001_004 + B17001_018) / B17001_001 * 100"`
+- **Output:** Character vector of unique uppercase variable names,
+  e.g. `c("B17001_004", "B17001_018", "B17001_001")`
+- **Notes:** Strips parentheses and `* 100` first, then splits on `+`, `-`,
+  `/`, `*`. Salvaged directly from the original ACSR package.
 
-
-## Example
 ```r
-getvars <- function(formula) {
-  constr <- gsub("\\(|\\)", "", formula)
-  constr <- gsub("\\* 100", "", constr)
-  vars   <- unlist(strsplit(constr, "[\\+]|[\\-]|[\\/]|[\\*]"))
-  vars   <- gsub("[[:space:]]", "", vars)
-  vars   <- toupper(vars)
-  vars   <- vars[!duplicated(vars)]
-  return(vars)
-}
+getvars("(B17001_004 + B17001_018) / B17001_001 * 100")
+# [1] "B17001_004" "B17001_018" "B17001_001"
 ```
 
-### MOE computation
+---
 
-All MOE math is done in SE units (divide incoming MOE by 1.645),
-then converted back to MOE at the end (multiply by 1.645).
+### `parse_formula(formula_str)`
 
-**Aggregation** — sum squared SEs, take square root:
+Splits a formula string into structured components.
 
-$$SE_{agg} = \sqrt{\sum_i SE_i^2}$$
-
-With `one.zero = TRUE`:
-
-$$SE_{agg} = \sqrt{\max(SE_i^2 \mid \hat{x}_i=0) + \sum(SE_j^2 \mid \hat{x}_j \neq 0)}$$
-
-Implementation pattern from ACSR (adapted for tibble columns):
+- **Input:** Formula string.
+- **Output:** A list with `num_vars`, `num_ops`, `den_vars`, `den_ops`,
+  `multiply_100`, `has_division`.
 
 ```r
-err_zero <- apply(se_mat^2 * (est_mat == 0), 1, max)
-err_nz   <- apply(se_mat^2 * (est_mat != 0), 1, sum)
-se_agg   <- sqrt(err_zero + err_nz)
+parse_formula("(B17001_004 + B17001_018) / B17001_001 * 100")
+# $num_vars: c("B17001_004", "B17001_018")
+# $den_vars: "B17001_001"
+# $multiply_100: TRUE
+# $has_division: TRUE
 ```
 
-**Proportion** — CB formula with automatic ratio fallback:
+---
 
-$$SE_{prop} = \frac{1}{Y}\sqrt{SE_X^2 - \hat{p}^2 \cdot SE_Y^2}$$
+### `compute_var_vector(df, est_cols, one_zero, z)`
+
+Core MOE engine. Combines a set of component variances into one combined
+variance, with optional one-zero correction.
+
+- **Input:** Wide `data.table`; character vector of estimate column names
+  (ending in `E`); `one_zero` logical; z-score.
+- **Output:** Numeric vector of combined variance values (one per row).
+- **Notes:** Finds matching MOE columns by replacing trailing `E` with `M`.
+  Converts MOEs to variances (divides by z, squares). Applies one-zero mask.
+
+---
+
+### `moe_agg(df, parsed, one_zero, z)`
+
+Aggregation MOE: sums estimates and combines MOEs via quadrature.
 
 ```r
-new_se <- ifelse(
-  (se_num^2 - (p^2 * se_den^2)) < 0,
-  sqrt(se_num^2 + (p^2 * se_den^2)) / den,  # ratio fallback
-  sqrt(se_num^2 - (p^2 * se_den^2)) / den   # proportion formula
+# Example: MOEs 10, 8, 6 → sqrt(10² + 8² + 6²) × 1.645 = 14.14 × 1.645
+moe_agg(df_test, parse_formula("A + B + C"))
+```
+
+---
+
+### `moe_proprat(df, parsed, method, one_zero, z)`
+
+Proportion or ratio MOE. Uses the CB proportion formula with automatic
+fallback to ratio formula when the radicand is negative.
+
+```r
+# Example: numerator 50 (MOE 5), denominator 200 (MOE 10)
+# → est = 0.25, moe = 0.022
+moe_proprat(df_test, parse_formula("A / B"), method = "prop")
+```
+
+---
+
+### `compute_one_variable(df, parsed, method, one_zero, z)`
+
+Traffic cop function. Routes each formula to the correct MOE function
+based on `method`, keeping the main loop clean.
+
+```
+method = "variable"    → grab estimate and MOE column directly
+method = "agg"         → moe_agg()
+method = "prop"/"ratio"→ moe_proprat()
+```
+
+---
+
+### `fetch_acs(variables, year, for_param, in_param, api_key)`
+
+Low-level Census API wrapper. Builds and sends the HTTP request, parses
+JSON to a `data.table`, handles sentinel values, and batches into chunks
+of 24 variables to stay under the 50-column API limit.
+
+---
+
+### `extract_fips(df)`
+
+Parses Census `GEO_ID` strings into component FIPS columns.
+
+```r
+# "0500000US55025" → st = "55", cnty = "025"
+# "1400000US55025950100" → st = "55", cnty = "025", tract = "950100"
+```
+
+---
+
+### `geo_lookup`
+
+A `data.table` mapping geography level names to Census API `for`/`in`
+clause syntax and `GEO_ID` prefixes.
+
+| `level` | `for_param` | `GEO_ID` prefix |
+|---------|-------------|-----------------|
+| `county` | `county:*` | `0500000US` |
+| `county.subdivision` | `county subdivision:*` | `0600000US` |
+| `tract` | `tract:*` | `1400000US` |
+| `block.group` | `block group:*` | `1500000US` |
+| `place` | `place:*` | `1600000US` |
+| `school.district.unified` | `unified school district:*` | `9700000US` |
+| `school.district.elementary` | `elementary school district:*` | `9500000US` |
+| `school.district.secondary` | `secondary school district:*` | `9600000US` |
+
+---
+
+# Example Usage
+
+```r
+# 1. Set API key (or store in .env file)
+Sys.setenv(CENSUS_API_KEY = "your_key_here")
+
+# 2. Load the script
+source("acsest.R")
+
+# 3. Read the spec CSV
+sheet <- read_spec("RR_vars_22ACS.csv")
+
+# 4. Download raw Census data (cached to tempdir)
+wi_acs <- acsdata(
+  formulas  = sheet[, formula],
+  level     = c("county", "tract"),
+  year      = 2022,
+  state     = "55"
 )
+
+# Optional: save to disk so you don't have to re-download
+saveRDS(wi_acs, "wi_acs.rds")
+# wi_acs <- readRDS("wi_acs.rds")  # reload later
+
+# 5. Compute all derived estimates and MOEs
+out <- sumacs(
+  spec  = sheet,
+  data  = wi_acs,
+  file  = "output.csv"   # omit to return without writing
+)
+
+# 6. Inspect results
+print(out)
 ```
 
-**Ratio:**
+---
 
-$$SE_{ratio} = \frac{1}{Y}\sqrt{SE_X^2 + \hat{p}^2 \cdot SE_Y^2}$$
+# Output Format
 
-**`variable`** — no computation. `se = moe / 1.645` directly from
-tidycensus output.
+One row per geographic unit. Columns:
 
-## Output format
+| Column | Description |
+|--------|-------------|
+| `level` | Geography level (`"county"`, `"tract"`, etc.) |
+| `GEO_ID` | Full Census GEO_ID string |
+| `NAME` | Human-readable geography name |
+| `st` | State FIPS code |
+| `cnty` | County FIPS code (where applicable) |
+| `tract` | Tract FIPS code (where applicable) |
+| `bg` | Block group number (where applicable) |
+| `{varname}_est` | Derived estimate |
+| `{varname}_moe` | Margin of error at 90% confidence |
 
-**Wide format** (default): one row per geography. Columns are `GEOID`,
-`NAME`, any FIPS columns, then `{varname}_est` and `{varname}_moe`
-for each derived variable. All geography levels are row-bound together
-with a `level` column to distinguish them.
+All geography levels are stacked into one table with a `level` column.
 
-**Long format** (`format.out = "long"`): one row per
-geography-variable combination. Columns are `GEOID`, `NAME`, `level`,
-`var_name`, `est`, `moe`.
+---
 
-If `file` is provided, the result is also written to a CSV at that path.
+# Differences from Original ACSR
 
-# Example usage
+| Feature | ACSR | acsest.R |
+|---------|------|----------|
+| API dependency | `acs` package (archived) | `httr2` (maintained) |
+| API key setup | `api.key.install()` | `Sys.setenv(CENSUS_API_KEY=...)` |
+| Year argument | `endyear=` | `year=` |
+| State argument | Implicit via `geo.make()` | Explicit `state="55"` |
+| Spec loading | Manual `fread()` + column extraction | `read_spec()` |
+| `sumacs()` inputs | `formula=`, `varname=`, `method=` separately | `spec=` (one data.table) |
+| One-zero correction | `one.zero=TRUE` | `one_zero=TRUE` |
+| Output | Wide `data.frame` | Wide `data.table` with `level` column |
 
-Census API key needs to be stored in environmental variable `CENSUS_API_KEY`.
+---
 
-```{r}
+# Validation
 
-source("acsest.R", local = (acsest <- new.env()))
+End-to-end test on live data (WI, 2022 ACS 5-year):
 
-# read in a set of estimate formulas
-sheet <- acsest$fread("path/to/estimate_specs.csv")
-
-# retrieve and save raw ACS data
-wi_acs <- acsest$acsdata(sheet[, formula], level = levels, endyear = 2022) 
-levels <- c("state", "county")
-saveRDS(wi_acs, file = "wi_acs.rds")
-
-# calculate estimates from data and formula specs
-out <- acsest$sumacs(formula = sheet[, formula], varname= sheet[, myfield], method = sheet[, type], level = levels, one.zero = TRUE, data = wi_acs, file = "output.csv")
-
-```
+- **County level:** 72 rows, 61 columns. Menominee County highest child
+  poverty at ~36%, Waukesha lowest. MOEs wider for small counties, tighter
+  for large ones. 
+- **Tract level:** 1,542 rows. FIPS columns correct. Zero estimates produce
+  wide MOEs from one-zero correction. 
+- **Unit tests:** `moe_agg` verified at 14.14 for MOEs 10/8/6.
+  `moe_proprat` verified at est=0.25, moe=0.022 for numerator 50, 
+  denominator 200. All routing tests pass. 
