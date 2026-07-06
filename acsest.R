@@ -194,10 +194,20 @@ geo_lookup <- data.table(
 # ── fetch_acs ─────────────────────────────────────────────────────────────────
 # Fetches ACS 5-year estimates from the Census API.
 fetch_acs <- function(variables, year, for_param, in_param,
-                      api_key = Sys.getenv("CENSUS_API_KEY")) {
+                      api_key   = Sys.getenv("CENSUS_API_KEY"),
+                      cache_dir = tempdir()) {
   base_url  <- sprintf("https://api.census.gov/data/%d/acs/acs5", year)
   sentinels <- c(-555555555, -666666666, -999999999, -888888888)
+  vars_key   <- paste(sort(variables), collapse = "-")
+  in_key     <- if (is.null(in_param) || nchar(in_param) == 0) "none" else in_param
+  raw_key    <- paste(year, for_param, in_key, vars_key, sep = "__")
+  cache_key  <- digest::digest(raw_key, algo = "md5")
+  cache_file <- file.path(cache_dir, sprintf("acs_%s.rds", cache_key))
 
+if (file.exists(cache_file)) {
+  message("Loading from cache: ", cache_file)
+  return(readRDS(cache_file))
+}                      
   chunks <- split(variables, ceiling(seq_along(variables) / 24))
 
   fetch_chunk <- function(vars) {
@@ -247,7 +257,8 @@ fetch_acs <- function(variables, year, for_param, in_param,
   for (col in data_cols) {
     set(out, which(out[[col]] %in% sentinels), col, NA_real_)
   }
-
+  saveRDS(out, cache_file)
+  message("Cached to: ", cache_file)
   out
 }
 
@@ -305,7 +316,7 @@ extract_fips <- function(df) {
 # Fetches all ACS variables for one or more geography levels, with RDS caching.
 # state: 2-digit FIPS string or vector of strings e.g. c("55", "36")
 #        not required for level = "nation"
-acsdata <- function(formulas, level, year, state = NULL,
+acsdata <- function(formulas, level, year, state = NULL,county=NULL,
                     api_key   = Sys.getenv("CENSUS_API_KEY"),
                     cache_dir = tempdir()) {
 
@@ -315,16 +326,7 @@ acsdata <- function(formulas, level, year, state = NULL,
   state_key <- if (is.null(state)) "all" else paste(sort(state), collapse = "-")
 
   fetch_one_level <- function(lvl) {
-    cache_file <- file.path(
-      cache_dir,
-      sprintf("acs_%s_%s_%s.rds", lvl, year, state_key)
-    )
-
-    if (file.exists(cache_file)) {
-      message("Loading from cache: ", cache_file)
-      return(readRDS(cache_file))
-    }
-
+   
     geo_row <- geo_lookup[level == lvl]
     if (nrow(geo_row) == 0) stop(paste("Unknown level:", lvl))
 
@@ -332,7 +334,8 @@ acsdata <- function(formulas, level, year, state = NULL,
     in_param <- if (!geo_row$needs_state) {
       ""  # nation level — no in clause
     } else if (geo_row$needs_county) {
-      sprintf("state:%s+county:*", paste(state, collapse = ","))
+      cnty <- if (!is.null(county)) county else "*" 
+      sprintf("state:%s+county:%s", paste(state, collapse = ","), cnty)
     } else {
       sprintf("state:%s", paste(state, collapse = ","))
     }
@@ -340,8 +343,7 @@ acsdata <- function(formulas, level, year, state = NULL,
     dt <- fetch_acs(all_vars, year, geo_row$for_param, in_param, api_key)
     dt <- extract_fips(dt)
 
-    saveRDS(dt, cache_file)
-    message("Cached to: ", cache_file)
+
     dt
   }
 
