@@ -4,23 +4,10 @@ library(stringr)
 library(rlang)
 library(httr2)
 
-# load .env if CENSUS_API_KEY is not already set
+# load .Renviron if CENSUS_API_KEY is not already set
+# recommended: store key in ~/.Renviron as CENSUS_API_KEY=your_key_here
 if (Sys.getenv("CENSUS_API_KEY") == "") {
-  script_dir <- tryCatch(dirname(normalizePath(sys.frames()[[1]]$ofile)), error = function(e) ".")
-  candidates <- c(file.path(script_dir, ".env"), ".env")
-  env_file   <- Filter(file.exists, candidates)[1]
-  if (!is.na(env_file)) {
-    lines <- readLines(env_file, warn = FALSE)
-    for (line in lines) {
-      if (grepl("^CENSUS_API_KEY=", line)) {
-        key <- gsub("[^A-Za-z0-9]", "", sub("^CENSUS_API_KEY=", "", line))
-        Sys.setenv(CENSUS_API_KEY = key)
-      }
-    }
-  }
-}
-if (Sys.getenv("CENSUS_API_KEY") == "") {
-  stop("CENSUS_API_KEY is not set — add it to .env or set it in your environment")
+  stop("CENSUS_API_KEY is not set — add it to ~/.Renviron or set it with Sys.setenv()")
 }
 
 # ── getvars ───────────────────────────────────────────────────────────────────
@@ -38,15 +25,11 @@ getvars <- function(formula) {
 # ── parse_formula ─────────────────────────────────────────────────────────────
 # Breaks a formula string into numerator/denominator variable lists and flags * 100.
 parse_formula <- function(formula_str) {
-  # 1. detect and strip "* 100"
   multiply_100 <- grepl("\\* 100", formula_str)
   constr <- gsub("\\* 100", "", formula_str)
-
-  # 2. strip parentheses, trim whitespace
   constr <- gsub("\\(|\\)", "", constr)
   constr <- trimws(constr)
 
-  # 3. split on "/" into numerator and denominator
   has_division <- grepl("/", constr)
   if (has_division) {
     parts <- strsplit(constr, "/")[[1]]
@@ -60,7 +43,6 @@ parse_formula <- function(formula_str) {
     den_str <- NULL
   }
 
-  # 4. helper: split one side into variables + operators
   parse_side <- function(s) {
     op_matches <- gregexpr("[+\\-]", s)[[1]]
     if (op_matches[1] == -1) {
@@ -75,11 +57,9 @@ parse_formula <- function(formula_str) {
     list(vars = vars, ops = operators)
   }
 
-  # 5. parse each side
   num_parsed <- parse_side(num_str)
   den_parsed <- if (!is.null(den_str)) parse_side(den_str) else list(vars = character(0), ops = character(0))
 
-  # 6. return the structured result
   list(
     num_vars     = num_parsed$vars,
     num_ops      = num_parsed$ops,
@@ -95,29 +75,22 @@ parse_formula <- function(formula_str) {
 compute_var_vector <- function(df, est_cols, one_zero = TRUE, z = 1.645) {
   if (length(est_cols) == 0) return(rep(0, nrow(df)))
 
-  # find the matching MOE columns (swap trailing E for M)
   moe_cols <- str_replace(est_cols, "E$", "M")
 
-  # extract estimates and MOEs as matrices
   E_mat <- as.matrix(df[, ..est_cols])
   V_mat <- as.matrix(df[, ..moe_cols])
 
-  # replace Census sentinel values with NA
   V_mat[V_mat %in% c(-555555555)] <- NA
   E_mat[E_mat %in% c(-555555555)] <- NA
 
-  # convert MOE to variance
   V_mat <- (V_mat / z)^2
 
-  # simple case: no one-zero rule, or only one variable
   if (!one_zero || length(est_cols) == 1) {
     return(rowSums(V_mat, na.rm = TRUE))
   }
 
-  # one-zero: sum variances where estimate is NOT zero
   nonzero_sum <- rowSums(V_mat * (E_mat != 0), na.rm = TRUE)
 
-  # one-zero: max variance among the zero-estimate components
   zero_vars_mat <- V_mat * (E_mat == 0)
   zero_vars_mat[is.na(zero_vars_mat)] <- 0
   zero_max <- exec(pmax, !!!as.data.frame(zero_vars_mat))
@@ -195,19 +168,24 @@ compute_one_variable <- function(df, parsed, method, one_zero = TRUE, z = 1.645)
 
 # ── geo_lookup ────────────────────────────────────────────────────────────────
 # Maps level names to Census API geography parameters and GEO_ID prefix.
+# needs_state: FALSE means no "in" clause needed (e.g. nation, state)
 geo_lookup <- data.table(
   level = c(
+    "nation", "state",
     "county", "county.subdivision", "tract", "block.group",
     "place", "school.district.unified", "school.district.elementary",
     "school.district.secondary"
   ),
   for_param = c(
+    "us:1", "state:*",
     "county:*", "county subdivision:*", "tract:*", "block group:*",
     "place:*", "unified school district:*",
     "elementary school district:*", "secondary school district:*"
   ),
-  needs_county = c(FALSE, TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE),
+  needs_state  = c(FALSE, FALSE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE),
+  needs_county = c(FALSE, FALSE, FALSE, TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE),
   geo_id_prefix = c(
+    "0100000US", "0400000US",
     "0500000US", "0600000US", "1400000US", "1500000US",
     "1600000US", "9700000US", "9500000US", "9600000US"
   )
@@ -220,21 +198,25 @@ fetch_acs <- function(variables, year, for_param, in_param,
   base_url  <- sprintf("https://api.census.gov/data/%d/acs/acs5", year)
   sentinels <- c(-555555555, -666666666, -999999999, -888888888)
 
-  # split into chunks of 24 vars (= 48 data cols) to stay under the 50-col limit
   chunks <- split(variables, ceiling(seq_along(variables) / 24))
 
   fetch_chunk <- function(vars) {
     cols <- c("GEO_ID", "NAME",
               as.vector(rbind(paste0(vars, "E"), paste0(vars, "M"))))
 
-    resp <- request(base_url) |>
+    req <- request(base_url) |>
       req_url_query(
-        get   = paste(cols, collapse = ","),
+        get = paste(cols, collapse = ","),
         `for` = for_param,
-        `in`  = in_param,
-        key   = api_key
-      ) |>
-      req_perform()
+        key = api_key
+      )
+
+    # only add "in" clause if in_param is not empty
+    if (!is.null(in_param) && nchar(in_param) > 0) {
+      req <- req |> req_url_query(`in` = in_param)
+    }
+
+    resp <- req |> req_perform()
 
     ct <- resp_content_type(resp)
     if (!grepl("json", ct)) {
@@ -249,21 +231,17 @@ fetch_acs <- function(variables, year, for_param, in_param,
     dt      <- as.data.table(mat)
     setnames(dt, headers)
 
-    # drop extra geography columns the API adds (state, county, tract, etc.)
-    # keep only GEO_ID, NAME, and the data columns we asked for
     keep <- intersect(names(dt), c("GEO_ID", "NAME", cols))
     dt[, ..keep]
   }
 
   batches <- lapply(chunks, fetch_chunk)
 
-  # join all batches on GEO_ID + NAME
   out <- Reduce(
     function(a, b) merge(a, b, by = c("GEO_ID", "NAME"), all = TRUE),
     batches
   )
 
-  # convert data columns to numeric and null out Census sentinel values
   data_cols <- setdiff(names(out), c("GEO_ID", "NAME"))
   out[, (data_cols) := lapply(.SD, as.numeric), .SDcols = data_cols]
   for (col in data_cols) {
@@ -285,28 +263,38 @@ extract_fips <- function(df) {
   lvl    <- geo_row$level
   suffix <- sub(".*US", "", dt$GEO_ID)
 
-  dt[, st := substr(suffix, 1, 2)]
+  if (lvl == "nation") {
+    # no FIPS columns needed
 
-  if (lvl == "county") {
+  } else if (lvl == "state") {
+    dt[, st := substr(suffix, 1, 2)]
+
+  } else if (lvl == "county") {
+    dt[, st   := substr(suffix, 1, 2)]
     dt[, cnty := substr(suffix, 3, 5)]
 
   } else if (lvl == "county.subdivision") {
+    dt[, st     := substr(suffix, 1, 2)]
     dt[, cnty   := substr(suffix, 3, 5)]
     dt[, cousub := substr(suffix, 6, 10)]
 
   } else if (lvl == "tract") {
+    dt[, st    := substr(suffix, 1, 2)]
     dt[, cnty  := substr(suffix, 3, 5)]
     dt[, tract := substr(suffix, 6, 11)]
 
   } else if (lvl == "block.group") {
+    dt[, st    := substr(suffix, 1, 2)]
     dt[, cnty  := substr(suffix, 3, 5)]
     dt[, tract := substr(suffix, 6, 11)]
     dt[, bg    := substr(suffix, 12, 12)]
 
   } else if (lvl == "place") {
+    dt[, st    := substr(suffix, 1, 2)]
     dt[, place := substr(suffix, 3, 7)]
 
   } else {
+    dt[, st   := substr(suffix, 1, 2)]
     dt[, sdid := substr(suffix, 3, 7)]
   }
 
@@ -315,16 +303,21 @@ extract_fips <- function(df) {
 
 # ── acsdata ───────────────────────────────────────────────────────────────────
 # Fetches all ACS variables for one or more geography levels, with RDS caching.
-acsdata <- function(formulas, level, year, state,
+# state: 2-digit FIPS string or vector of strings e.g. c("55", "36")
+#        not required for level = "nation"
+acsdata <- function(formulas, level, year, state = NULL,
                     api_key   = Sys.getenv("CENSUS_API_KEY"),
                     cache_dir = tempdir()) {
 
   all_vars <- unique(unlist(lapply(formulas, getvars)))
 
+  # collapse multiple states into one string for cache key
+  state_key <- if (is.null(state)) "all" else paste(sort(state), collapse = "-")
+
   fetch_one_level <- function(lvl) {
     cache_file <- file.path(
       cache_dir,
-      sprintf("acs_%s_%s_%s.rds", lvl, year, state)
+      sprintf("acs_%s_%s_%s.rds", lvl, year, state_key)
     )
 
     if (file.exists(cache_file)) {
@@ -335,10 +328,13 @@ acsdata <- function(formulas, level, year, state,
     geo_row <- geo_lookup[level == lvl]
     if (nrow(geo_row) == 0) stop(paste("Unknown level:", lvl))
 
-    in_param <- if (geo_row$needs_county) {
-      sprintf("state:%s+county:*", state)
+    # build in_param based on what the geography needs
+    in_param <- if (!geo_row$needs_state) {
+      ""  # nation level — no in clause
+    } else if (geo_row$needs_county) {
+      sprintf("state:%s+county:*", paste(state, collapse = ","))
     } else {
-      sprintf("state:%s", state)
+      sprintf("state:%s", paste(state, collapse = ","))
     }
 
     dt <- fetch_acs(all_vars, year, geo_row$for_param, in_param, api_key)
@@ -391,13 +387,11 @@ sumacs <- function(spec, data, one_zero = TRUE, z = 1.645, file = NULL) {
 read_spec <- function(path) {
   sheet <- fread(file = path)
 
-  # check required columns
   required <- c("formula", "myfield", "type")
   missing  <- setdiff(required, names(sheet))
   if (length(missing) > 0)
     stop("Spec CSV missing required columns: ", paste(missing, collapse = ", "))
 
-  # normalize method names (handles Prop, Agg, PROPORTION etc.)
   sheet[, type := fcase(
     tolower(type) %in% c("proportion", "prop"),  "prop",
     tolower(type) %in% c("ratio"),               "ratio",
@@ -406,12 +400,10 @@ read_spec <- function(path) {
     default = NA_character_
   )]
 
-  # warn on unrecognized methods
   bad <- sheet[is.na(type), myfield]
   if (length(bad) > 0)
     warning("Unrecognized method for variable(s): ", paste(bad, collapse = ", "))
 
-  # rename to match sumacs() expected column names
   setnames(sheet, c("myfield", "type"), c("varname", "method"))
 
   sheet
