@@ -68,5 +68,33 @@
     "title": "ACSEST: ACS Derived Estimates",
     "section": "Internal Helpers",
     "text": "Internal Helpers\n\ngetvars(formula)\nExtracts raw ACS variable codes from a formula string.\n\nInput: Character string, e.g. \"(B17001_004 + B17001_018) / B17001_001 * 100\"\nOutput: Character vector of unique uppercase variable names, e.g. c(\"B17001_004\", \"B17001_018\", \"B17001_001\")\nNotes: Strips parentheses and * 100 first, then splits on +, -, /, *. Salvaged directly from the original ACSR package.\n\ngetvars(\"(B17001_004 + B17001_018) / B17001_001 * 100\")\n# [1] \"B17001_004\" \"B17001_018\" \"B17001_001\"\n\n\n\nparse_formula(formula_str)\nSplits a formula string into structured components.\n\nInput: Formula string.\nOutput: A list with num_vars, num_ops, den_vars, den_ops, multiply_100, has_division.\n\nparse_formula(\"(B17001_004 + B17001_018) / B17001_001 * 100\")\n# $num_vars: c(\"B17001_004\", \"B17001_018\")\n# $den_vars: \"B17001_001\"\n# $multiply_100: TRUE\n# $has_division: TRUE\n\n\n\ncompute_var_vector(df, est_cols, one_zero, z)\nCore MOE engine. Combines a set of component variances into one combined variance, with optional one-zero correction.\n\nInput: Wide data.table; character vector of estimate column names (ending in E); one_zero logical; z-score.\nOutput: Numeric vector of combined variance values (one per row).\nNotes: Finds matching MOE columns by replacing trailing E with M. Converts MOEs to variances (divides by z, squares). Applies one-zero mask.\n\n\n\n\nmoe_agg(df, parsed, one_zero, z)\nAggregation MOE: sums estimates and combines MOEs via quadrature.\n# Example: MOEs 10, 8, 6 → sqrt(10² + 8² + 6²) × 1.645 = 14.14 × 1.645\nmoe_agg(df_test, parse_formula(\"A + B + C\"))\n\n\n\nmoe_proprat(df, parsed, method, one_zero, z)\nProportion or ratio MOE. Uses the CB proportion formula with automatic fallback to ratio formula when the radicand is negative.\n# Example: numerator 50 (MOE 5), denominator 200 (MOE 10)\n# → est = 0.25, moe = 0.022\nmoe_proprat(df_test, parse_formula(\"A / B\"), method = \"prop\")\n\n\n\ncompute_one_variable(df, parsed, method, one_zero, z)\nTraffic cop function. Routes each formula to the correct MOE function based on method, keeping the main loop clean.\nmethod = \"variable\"    → grab estimate and MOE column directly\nmethod = \"agg\"         → moe_agg()\nmethod = \"prop\"/\"ratio\"→ moe_proprat()\n\n\n\nfetch_acs(variables, year, for_param, in_param, api_key)\nLow-level Census API wrapper. Builds and sends the HTTP request, parses JSON to a data.table, handles sentinel values, and batches into chunks of 24 variables to stay under the 50-column API limit.\n\n\n\nextract_fips(df)\nParses Census GEO_ID strings into component FIPS columns.\n# \"0500000US55025\" → st = \"55\", cnty = \"025\"\n# \"1400000US55025950100\" → st = \"55\", cnty = \"025\", tract = \"950100\"\n\n\n\ngeo_lookup\nA data.table mapping geography level names to Census API for/in clause syntax and GEO_ID prefixes.\n\n\n\n\n\n\n\n\nlevel\nfor_param\nGEO_ID prefix\n\n\n\n\ncounty\ncounty:*\n0500000US\n\n\ncounty.subdivision\ncounty subdivision:*\n0600000US\n\n\ntract\ntract:*\n1400000US\n\n\nblock.group\nblock group:*\n1500000US\n\n\nplace\nplace:*\n1600000US\n\n\nschool.district.unified\nunified school district:*\n9700000US\n\n\nschool.district.elementary\nelementary school district:*\n9500000US\n\n\nschool.district.secondary\nsecondary school district:*\n9600000US"
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "acsest",
+    "section": "",
+    "text": "acsest is an R script that makes it easy to pull demographic statistics from the US Census Bureau and calculate custom measures with correct margins of error.\nIt was built at the Applied Population Laboratory at UW–Madison to support research projects that need Census data at multiple geographic levels — counties, tracts, school districts, and more."
+  },
+  {
+    "objectID": "index.html#what-is-acsest",
+    "href": "index.html#what-is-acsest",
+    "title": "acsest",
+    "section": "",
+    "text": "acsest is an R script that makes it easy to pull demographic statistics from the US Census Bureau and calculate custom measures with correct margins of error.\nIt was built at the Applied Population Laboratory at UW–Madison to support research projects that need Census data at multiple geographic levels — counties, tracts, school districts, and more."
+  },
+  {
+    "objectID": "index.html#quick-start",
+    "href": "index.html#quick-start",
+    "title": "acsest",
+    "section": "Quick Start",
+    "text": "Quick Start\nsource(\"acsest.R\")\nsheet  &lt;- read_spec(\"my_variables.csv\")\nwi_acs &lt;- acsdata(sheet[, formula], level = \"county\", year = 2022, state = \"55\")\nout    &lt;- sumacs(spec = sheet, data = wi_acs, file = \"output.csv\")"
+  },
+  {
+    "objectID": "index.html#projects-using-acsest",
+    "href": "index.html#projects-using-acsest",
+    "title": "acsest",
+    "section": "Projects Using acsest",
+    "text": "Projects Using acsest\n\nUW Food Security Mapping\nAPL Risk & Reach"
   }
 ]
