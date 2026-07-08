@@ -1,0 +1,72 @@
+[
+  {
+    "objectID": "acsest.html",
+    "href": "acsest.html",
+    "title": "ACSEST: ACS Derived Estimates",
+    "section": "",
+    "text": "acsest.R is a self-contained R script that reads a CSV file of ACS variable formulas and returns a table of derived estimates and their margins of error (MOEs) for one or more geographic levels.\nIt was created to replace the acsr package, which depended on the archived acs R package that is no longer maintained. The new script talks directly to the Census Bureau REST API using httr2, which is actively maintained.\nPrimary dependencies:\n\n\n\nPackage\nRole\n\n\n\n\ndata.table\nFast CSV I/O and data manipulation\n\n\nhttr2\nCensus API HTTP requests\n\n\nstringr\nString operations (MOE column name replacement)\n\n\nrlang\nexec(pmax, ...) for the one-zero max operation"
+  },
+  {
+    "objectID": "acsest.html#census-api-key",
+    "href": "acsest.html#census-api-key",
+    "title": "ACSEST: ACS Derived Estimates",
+    "section": "Census API Key",
+    "text": "Census API Key\nA Census API key is required. Request one at https://api.census.gov/data/key_signup.html.\nSet it before sourcing the script:\nSys.setenv(CENSUS_API_KEY = \"your_key_here\")\nsource(\"acsest.R\")\nOr store it in a .env file in the same directory as acsest.R:\nCENSUS_API_KEY=your_key_here\nThe script will load it automatically on startup."
+  },
+  {
+    "objectID": "acsest.html#variable",
+    "href": "acsest.html#variable",
+    "title": "ACSEST: ACS Derived Estimates",
+    "section": "Variable",
+    "text": "Variable\nPull the raw ACS value directly. No computation. The estimate and MOE come straight from the API."
+  },
+  {
+    "objectID": "acsest.html#aggregation",
+    "href": "acsest.html#aggregation",
+    "title": "ACSEST: ACS Derived Estimates",
+    "section": "Aggregation",
+    "text": "Aggregation\nSum several variables together (e.g. total people across age groups). MOE is computed by summing the squared SEs and taking the square root (quadrature):\n\\[MOE_{agg} = 1.645 \\times \\sqrt{\\sum_i SE_i^2}\\]"
+  },
+  {
+    "objectID": "acsest.html#proportion",
+    "href": "acsest.html#proportion",
+    "title": "ACSEST: ACS Derived Estimates",
+    "section": "Proportion",
+    "text": "Proportion\nNumerator is a subset of the denominator (e.g. people in poverty / total people). Result is a value between 0 and 1 (or 0–100 if * 100 is appended to the formula). Uses the Census Bureau proportion formula:\n\\[MOE_{prop} = \\frac{1.645}{Y} \\sqrt{SE_X^2 - \\hat{p}^2 \\cdot SE_Y^2}\\]\nIf the expression under the square root is negative, the script automatically falls back to the ratio formula."
+  },
+  {
+    "objectID": "acsest.html#ratio",
+    "href": "acsest.html#ratio",
+    "title": "ACSEST: ACS Derived Estimates",
+    "section": "Ratio",
+    "text": "Ratio\nNumerator is not a subset of the denominator (e.g. males / females). Uses + instead of −:\n\\[MOE_{ratio} = \\frac{1.645}{Y} \\sqrt{SE_X^2 + \\hat{p}^2 \\cdot SE_Y^2}\\]"
+  },
+  {
+    "objectID": "acsest.html#spec-csv-file",
+    "href": "acsest.html#spec-csv-file",
+    "title": "ACSEST: ACS Derived Estimates",
+    "section": "Spec CSV File",
+    "text": "Spec CSV File\nThe user provides a CSV with one row per derived variable to compute. Required columns:\n\n\n\n\n\n\n\n\nColumn\nDescription\nExample\n\n\n\n\nformula\nACS variable codes with arithmetic operators. Append * 100 to scale to percentage. Parentheses are supported.\n(B17001_004 + B17001_018) / B17001_001 * 100\n\n\nmyfield\nOutput column name for this derived variable\npoverty_rate\n\n\ntype\nOne of variable, aggregation/agg, proportion/prop, ratio (case-insensitive)\nprop\n\n\n\nExample RR_vars_22ACS.csv:\nmyfield,type,formula\nu5_pv,Prop,(B17001_004 + B17001_018) / (B17001_004 + B17001_018 + B17001_033 + B17001_047)\nu5_pv_c,Agg,(B17001_004 + B17001_018)\ngini,Agg,(B19083_001)"
+  },
+  {
+    "objectID": "acsest.html#runtime-arguments",
+    "href": "acsest.html#runtime-arguments",
+    "title": "ACSEST: ACS Derived Estimates",
+    "section": "Runtime Arguments",
+    "text": "Runtime Arguments\n\n\n\n\n\n\n\n\nArgument\nWhat it controls\nDefault\n\n\n\n\nlevel\nGeography string(s) from geo_lookup, e.g. c(\"county\", \"tract\")\nrequired\n\n\nyear\nACS 5-year survey end year\nrequired\n\n\nstate\n2-digit state FIPS code as character\nrequired\n\n\none_zero\nApply the one-zero SE rule\nTRUE\n\n\nfile\nPath to write output CSV (optional)\nNULL"
+  },
+  {
+    "objectID": "acsest.html#user-facing",
+    "href": "acsest.html#user-facing",
+    "title": "ACSEST: ACS Derived Estimates",
+    "section": "User-Facing",
+    "text": "User-Facing\n\nread_spec(path)\nReads and validates the spec CSV file.\n\nInput: File path to the spec CSV.\nOutput: A data.table with columns formula, varname, method.\nNotes: Validates required columns are present. Normalizes type values to lowercase standard names (prop, agg, ratio, variable) regardless of capitalization in the CSV. Renames myfield → varname and type → method to match sumacs() expected column names.\n\nread_spec &lt;- function(path)\n\n\n\nacsdata(formulas, level, year, state, cache_dir)\nDownloads raw ACS data for all variables needed by the spec, for one or more geographic levels.\n\nInput: Vector of formula strings; vector of geography level strings; integer year; 2-digit state FIPS string.\nOutput: A named list — one element per level — of wide-format data.tables. Each table has one row per geography, columns GEO_ID, NAME, FIPS columns, and {var}E / {var}M column pairs for each variable.\nNotes: Calls getvars() internally to extract variable names from formulas before fetching. Results are cached to .rds files keyed on (level, year, state) so re-running sumacs() with a different spec does not require re-downloading.\n\nacsdata(formulas, level, year, state,\n        api_key   = Sys.getenv(\"CENSUS_API_KEY\"),\n        cache_dir = tempdir())\n\n\n\nsumacs(spec, data, one_zero, z, file)\nMain computation loop. Computes all derived estimates and MOEs.\n\nInput: spec data.table from read_spec(); data named list from acsdata(); optional file path for CSV output.\nOutput: A wide data.table with level, GEO_ID, NAME, FIPS columns, and {varname}_est / {varname}_moe column pairs for each derived variable. All geography levels are row-bound together with a level column.\nNotes: Loops over spec rows, dispatches to the correct MOE function via compute_one_variable(), and column-binds all results per geography.\n\nsumacs(spec, data, one_zero = TRUE, z = 1.645, file = NULL)"
+  },
+  {
+    "objectID": "acsest.html#internal-helpers",
+    "href": "acsest.html#internal-helpers",
+    "title": "ACSEST: ACS Derived Estimates",
+    "section": "Internal Helpers",
+    "text": "Internal Helpers\n\ngetvars(formula)\nExtracts raw ACS variable codes from a formula string.\n\nInput: Character string, e.g. \"(B17001_004 + B17001_018) / B17001_001 * 100\"\nOutput: Character vector of unique uppercase variable names, e.g. c(\"B17001_004\", \"B17001_018\", \"B17001_001\")\nNotes: Strips parentheses and * 100 first, then splits on +, -, /, *. Salvaged directly from the original ACSR package.\n\ngetvars(\"(B17001_004 + B17001_018) / B17001_001 * 100\")\n# [1] \"B17001_004\" \"B17001_018\" \"B17001_001\"\n\n\n\nparse_formula(formula_str)\nSplits a formula string into structured components.\n\nInput: Formula string.\nOutput: A list with num_vars, num_ops, den_vars, den_ops, multiply_100, has_division.\n\nparse_formula(\"(B17001_004 + B17001_018) / B17001_001 * 100\")\n# $num_vars: c(\"B17001_004\", \"B17001_018\")\n# $den_vars: \"B17001_001\"\n# $multiply_100: TRUE\n# $has_division: TRUE\n\n\n\ncompute_var_vector(df, est_cols, one_zero, z)\nCore MOE engine. Combines a set of component variances into one combined variance, with optional one-zero correction.\n\nInput: Wide data.table; character vector of estimate column names (ending in E); one_zero logical; z-score.\nOutput: Numeric vector of combined variance values (one per row).\nNotes: Finds matching MOE columns by replacing trailing E with M. Converts MOEs to variances (divides by z, squares). Applies one-zero mask.\n\n\n\n\nmoe_agg(df, parsed, one_zero, z)\nAggregation MOE: sums estimates and combines MOEs via quadrature.\n# Example: MOEs 10, 8, 6 → sqrt(10² + 8² + 6²) × 1.645 = 14.14 × 1.645\nmoe_agg(df_test, parse_formula(\"A + B + C\"))\n\n\n\nmoe_proprat(df, parsed, method, one_zero, z)\nProportion or ratio MOE. Uses the CB proportion formula with automatic fallback to ratio formula when the radicand is negative.\n# Example: numerator 50 (MOE 5), denominator 200 (MOE 10)\n# → est = 0.25, moe = 0.022\nmoe_proprat(df_test, parse_formula(\"A / B\"), method = \"prop\")\n\n\n\ncompute_one_variable(df, parsed, method, one_zero, z)\nTraffic cop function. Routes each formula to the correct MOE function based on method, keeping the main loop clean.\nmethod = \"variable\"    → grab estimate and MOE column directly\nmethod = \"agg\"         → moe_agg()\nmethod = \"prop\"/\"ratio\"→ moe_proprat()\n\n\n\nfetch_acs(variables, year, for_param, in_param, api_key)\nLow-level Census API wrapper. Builds and sends the HTTP request, parses JSON to a data.table, handles sentinel values, and batches into chunks of 24 variables to stay under the 50-column API limit.\n\n\n\nextract_fips(df)\nParses Census GEO_ID strings into component FIPS columns.\n# \"0500000US55025\" → st = \"55\", cnty = \"025\"\n# \"1400000US55025950100\" → st = \"55\", cnty = \"025\", tract = \"950100\"\n\n\n\ngeo_lookup\nA data.table mapping geography level names to Census API for/in clause syntax and GEO_ID prefixes.\n\n\n\n\n\n\n\n\nlevel\nfor_param\nGEO_ID prefix\n\n\n\n\ncounty\ncounty:*\n0500000US\n\n\ncounty.subdivision\ncounty subdivision:*\n0600000US\n\n\ntract\ntract:*\n1400000US\n\n\nblock.group\nblock group:*\n1500000US\n\n\nplace\nplace:*\n1600000US\n\n\nschool.district.unified\nunified school district:*\n9700000US\n\n\nschool.district.elementary\nelementary school district:*\n9500000US\n\n\nschool.district.secondary\nsecondary school district:*\n9600000US"
+  }
+]

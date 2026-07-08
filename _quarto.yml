@@ -1,0 +1,19 @@
+project:
+  type: website
+  output-dir: docs
+
+website:
+  title: "acsest"
+  navbar:
+    background: primary
+    left:
+      - href: acsest.qmd
+        text: Documentation
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-overflow: wrap

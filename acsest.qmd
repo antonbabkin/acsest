@@ -1,14 +1,6 @@
 ---
 title: "ACSEST: ACS Derived Estimates"
 author: "Diveesha Vanchireddy"
-format:
-  html:
-    date: today
-    toc: true
-    toc-depth: 3
-    embed-resources: true
-    code-fold: true
-    code-overflow: wrap
 ---
 
 # Overview
