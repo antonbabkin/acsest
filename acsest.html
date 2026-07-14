@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.7.32">
+<meta name="generator" content="quarto-1.9.37">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -10,6 +10,9 @@
 
 <title>ACSEST: ACS Derived Estimates – acsest</title>
 <style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
 div.columns{display: flex; gap: min(4vw, 1.5em);}
@@ -72,10 +75,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="site_libs/quarto-html/anchor.min.js"></script>
 <link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-2fef5ea3f8957b3e4ecc936fc74692ca.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-3584749cf2b7b2005a9dd594a23b7e60.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="dark">
+<link href="site_libs/bootstrap/bootstrap-2ac31728d6022ae7c999f9668b9be869.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -105,7 +108,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 }</script>
 
   <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+  <script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
 
 <script type="text/javascript">
 const typesetMath = (el) => {
@@ -118,7 +121,7 @@ const typesetMath = (el) => {
     var macros = [];
     for (var i = 0; i < mathElements.length; i++) {
       var texText = mathElements[i].firstChild;
-      if (mathElements[i].tagName == "SPAN") {
+      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
         window.katex.render(texText.data, mathElements[i], {
           displayMode: mathElements[i].classList.contains('display'),
           throwOnError: false,
@@ -153,10 +156,6 @@ window.Quarto = {
 </button>
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll me-auto">
-  <li class="nav-item">
-    <a class="nav-link" href="./index.html"> 
-<span class="menu-text">Home</span></a>
-  </li>  
   <li class="nav-item">
     <a class="nav-link active" href="./acsest.html" aria-current="page"> 
 <span class="menu-text">Documentation</span></a>
@@ -291,8 +290,8 @@ window.Quarto = {
 <h2 class="anchored" data-anchor-id="census-api-key">Census API Key</h2>
 <p>A Census API key is required. Request one at <a href="https://api.census.gov/data/key_signup.html" class="uri">https://api.census.gov/data/key_signup.html</a>.</p>
 <p>Set it before sourcing the script:</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">Sys.setenv</span>(<span class="at">CENSUS_API_KEY =</span> <span class="st">"your_key_here"</span>)</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">source</span>(<span class="st">"acsest.R"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">Sys.setenv</span>(<span class="at">CENSUS_API_KEY =</span> <span class="st">"your_key_here"</span>)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">source</span>(<span class="st">"acsest.R"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Or store it in a <code>.env</code> file in the same directory as <code>acsest.R</code>:</p>
 <pre><code>CENSUS_API_KEY=your_key_here</code></pre>
 <p>The script will load it automatically on startup.</p>
@@ -339,10 +338,10 @@ window.Quarto = {
 <p><span class="math display">\[SE^2_{combined} = \max\!\left(SE_i^2 \;\middle|\; \hat{x}_i = 0\right)
 + \sum\!\left(SE_j^2 \;\middle|\; \hat{x}_j \neq 0\right)\]</span></p>
 <p>This is the <code>one_zero = TRUE</code> behavior and is the default. Implementation uses a 0/1 matrix mask multiplied against the squared SE matrix:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>nonzero_sum   <span class="ot">&lt;-</span> <span class="fu">rowSums</span>(V_mat <span class="sc">*</span> (E_mat <span class="sc">!=</span> <span class="dv">0</span>), <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>nonzero_sum   <span class="ot">&lt;-</span> <span class="fu">rowSums</span>(V_mat <span class="sc">*</span> (E_mat <span class="sc">!=</span> <span class="dv">0</span>), <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>zero_vars_mat <span class="ot">&lt;-</span> V_mat <span class="sc">*</span> (E_mat <span class="sc">==</span> <span class="dv">0</span>)</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>zero_max      <span class="ot">&lt;-</span> <span class="fu">exec</span>(pmax, <span class="sc">!!!</span><span class="fu">as.data.frame</span>(zero_vars_mat))</span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>combined_var  <span class="ot">&lt;-</span> nonzero_sum <span class="sc">+</span> zero_max</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>combined_var  <span class="ot">&lt;-</span> nonzero_sum <span class="sc">+</span> zero_max</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <hr>
 </section>
 <section id="inputs" class="level1">
@@ -445,7 +444,7 @@ gini,Agg,(B19083_001)</code></pre>
 <li><strong>Output:</strong> A <code>data.table</code> with columns <code>formula</code>, <code>varname</code>, <code>method</code>.</li>
 <li><strong>Notes:</strong> Validates required columns are present. Normalizes <code>type</code> values to lowercase standard names (<code>prop</code>, <code>agg</code>, <code>ratio</code>, <code>variable</code>) regardless of capitalization in the CSV. Renames <code>myfield</code> → <code>varname</code> and <code>type</code> → <code>method</code> to match <code>sumacs()</code> expected column names.</li>
 </ul>
-<div class="sourceCode" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>read_spec <span class="ot">&lt;-</span> <span class="cf">function</span>(path)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>read_spec <span class="ot">&lt;-</span> <span class="cf">function</span>(path)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <hr>
 </section>
 <section id="acsdataformulas-level-year-state-cache_dir" class="level3">
@@ -456,9 +455,9 @@ gini,Agg,(B19083_001)</code></pre>
 <li><strong>Output:</strong> A named list — one element per level — of wide-format <code>data.table</code>s. Each table has one row per geography, columns <code>GEO_ID</code>, <code>NAME</code>, FIPS columns, and <code>{var}E</code> / <code>{var}M</code> column pairs for each variable.</li>
 <li><strong>Notes:</strong> Calls <code>getvars()</code> internally to extract variable names from formulas before fetching. Results are cached to <code>.rds</code> files keyed on <code>(level, year, state)</code> so re-running <code>sumacs()</code> with a different spec does not require re-downloading.</li>
 </ul>
-<div class="sourceCode" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">acsdata</span>(formulas, level, year, state,</span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">acsdata</span>(formulas, level, year, state,</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>        <span class="at">api_key   =</span> <span class="fu">Sys.getenv</span>(<span class="st">"CENSUS_API_KEY"</span>),</span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>        <span class="at">cache_dir =</span> <span class="fu">tempdir</span>())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>        <span class="at">cache_dir =</span> <span class="fu">tempdir</span>())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <hr>
 </section>
 <section id="sumacsspec-data-one_zero-z-file" class="level3">
@@ -469,7 +468,7 @@ gini,Agg,(B19083_001)</code></pre>
 <li><strong>Output:</strong> A wide <code>data.table</code> with <code>level</code>, <code>GEO_ID</code>, <code>NAME</code>, FIPS columns, and <code>{varname}_est</code> / <code>{varname}_moe</code> column pairs for each derived variable. All geography levels are row-bound together with a <code>level</code> column.</li>
 <li><strong>Notes:</strong> Loops over spec rows, dispatches to the correct MOE function via <code>compute_one_variable()</code>, and column-binds all results per geography.</li>
 </ul>
-<div class="sourceCode" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sumacs</span>(spec, data, <span class="at">one_zero =</span> <span class="cn">TRUE</span>, <span class="at">z =</span> <span class="fl">1.645</span>, <span class="at">file =</span> <span class="cn">NULL</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sumacs</span>(spec, data, <span class="at">one_zero =</span> <span class="cn">TRUE</span>, <span class="at">z =</span> <span class="fl">1.645</span>, <span class="at">file =</span> <span class="cn">NULL</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <hr>
 </section>
 </section>
@@ -483,8 +482,8 @@ gini,Agg,(B19083_001)</code></pre>
 <li><strong>Output:</strong> Character vector of unique uppercase variable names, e.g.&nbsp;<code>c("B17001_004", "B17001_018", "B17001_001")</code></li>
 <li><strong>Notes:</strong> Strips parentheses and <code>* 100</code> first, then splits on <code>+</code>, <code>-</code>, <code>/</code>, <code>*</code>. Salvaged directly from the original ACSR package.</li>
 </ul>
-<div class="sourceCode" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">getvars</span>(<span class="st">"(B17001_004 + B17001_018) / B17001_001 * 100"</span>)</span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="co"># [1] "B17001_004" "B17001_018" "B17001_001"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">getvars</span>(<span class="st">"(B17001_004 + B17001_018) / B17001_001 * 100"</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="co"># [1] "B17001_004" "B17001_018" "B17001_001"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <hr>
 </section>
 <section id="parse_formulaformula_str" class="level3">
@@ -494,11 +493,11 @@ gini,Agg,(B19083_001)</code></pre>
 <li><strong>Input:</strong> Formula string.</li>
 <li><strong>Output:</strong> A list with <code>num_vars</code>, <code>num_ops</code>, <code>den_vars</code>, <code>den_ops</code>, <code>multiply_100</code>, <code>has_division</code>.</li>
 </ul>
-<div class="sourceCode" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">parse_formula</span>(<span class="st">"(B17001_004 + B17001_018) / B17001_001 * 100"</span>)</span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">parse_formula</span>(<span class="st">"(B17001_004 + B17001_018) / B17001_001 * 100"</span>)</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="co"># $num_vars: c("B17001_004", "B17001_018")</span></span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="co"># $den_vars: "B17001_001"</span></span>
 <span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co"># $multiply_100: TRUE</span></span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="co"># $has_division: TRUE</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="co"># $has_division: TRUE</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <hr>
 </section>
 <section id="compute_var_vectordf-est_cols-one_zero-z" class="level3">
@@ -514,16 +513,16 @@ gini,Agg,(B19083_001)</code></pre>
 <section id="moe_aggdf-parsed-one_zero-z" class="level3">
 <h3 class="anchored" data-anchor-id="moe_aggdf-parsed-one_zero-z"><code>moe_agg(df, parsed, one_zero, z)</code></h3>
 <p>Aggregation MOE: sums estimates and combines MOEs via quadrature.</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Example: MOEs 10, 8, 6 → sqrt(10² + 8² + 6²) × 1.645 = 14.14 × 1.645</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="fu">moe_agg</span>(df_test, <span class="fu">parse_formula</span>(<span class="st">"A + B + C"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Example: MOEs 10, 8, 6 → sqrt(10² + 8² + 6²) × 1.645 = 14.14 × 1.645</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="fu">moe_agg</span>(df_test, <span class="fu">parse_formula</span>(<span class="st">"A + B + C"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <hr>
 </section>
 <section id="moe_propratdf-parsed-method-one_zero-z" class="level3">
 <h3 class="anchored" data-anchor-id="moe_propratdf-parsed-method-one_zero-z"><code>moe_proprat(df, parsed, method, one_zero, z)</code></h3>
 <p>Proportion or ratio MOE. Uses the CB proportion formula with automatic fallback to ratio formula when the radicand is negative.</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Example: numerator 50 (MOE 5), denominator 200 (MOE 10)</span></span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Example: numerator 50 (MOE 5), denominator 200 (MOE 10)</span></span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="co"># → est = 0.25, moe = 0.022</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="fu">moe_proprat</span>(df_test, <span class="fu">parse_formula</span>(<span class="st">"A / B"</span>), <span class="at">method =</span> <span class="st">"prop"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="fu">moe_proprat</span>(df_test, <span class="fu">parse_formula</span>(<span class="st">"A / B"</span>), <span class="at">method =</span> <span class="st">"prop"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <hr>
 </section>
 <section id="compute_one_variabledf-parsed-method-one_zero-z" class="level3">
@@ -542,8 +541,8 @@ method = "prop"/"ratio"→ moe_proprat()</code></pre>
 <section id="extract_fipsdf" class="level3">
 <h3 class="anchored" data-anchor-id="extract_fipsdf"><code>extract_fips(df)</code></h3>
 <p>Parses Census <code>GEO_ID</code> strings into component FIPS columns.</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># "0500000US55025" → st = "55", cnty = "025"</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="co"># "1400000US55025950100" → st = "55", cnty = "025", tract = "950100"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># "0500000US55025" → st = "55", cnty = "025"</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="co"># "1400000US55025950100" → st = "55", cnty = "025", tract = "950100"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <hr>
 </section>
 <section id="geo_lookup" class="level3">
@@ -611,7 +610,7 @@ method = "prop"/"ratio"→ moe_proprat()</code></pre>
 </section>
 <section id="example-usage" class="level1">
 <h1>Example Usage</h1>
-<div class="sourceCode" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Set API key (or store in .env file)</span></span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Set API key (or store in .env file)</span></span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="fu">Sys.setenv</span>(<span class="at">CENSUS_API_KEY =</span> <span class="st">"your_key_here"</span>)</span>
 <span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Load the script</span></span>
@@ -640,7 +639,7 @@ method = "prop"/"ratio"→ moe_proprat()</code></pre>
 <span id="cb14-27"><a href="#cb14-27" aria-hidden="true" tabindex="-1"></a>)</span>
 <span id="cb14-28"><a href="#cb14-28" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb14-29"><a href="#cb14-29" aria-hidden="true" tabindex="-1"></a><span class="co"># 6. Inspect results</span></span>
-<span id="cb14-30"><a href="#cb14-30" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(out)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb14-30"><a href="#cb14-30" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(out)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <hr>
 </section>
 <section id="output-format" class="level1">
@@ -819,13 +818,14 @@ method = "prop"/"ratio"→ moe_proprat()</code></pre>
       e.clearSelection();
     }
     const getTextToCopy = function(trigger) {
-        const codeEl = trigger.previousElementSibling.cloneNode(true);
-        for (const childEl of codeEl.children) {
-          if (isCodeAnnotation(childEl)) {
-            childEl.remove();
-          }
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
         }
-        return codeEl.innerText;
+      }
+      return codeEl.innerText;
     }
     const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
       text: getTextToCopy
