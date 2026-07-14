@@ -5,3 +5,11 @@ acs_firstv/
 .claude
 .claude/
 RR_vars_21.csv
+.Renviron
+.Rprofile
+renv/
+
+/.quarto/
+**/*.quarto_ipynb
+docs/
+
